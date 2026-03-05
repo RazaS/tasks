@@ -155,6 +155,43 @@ function priorityValue(item: TaskItem): number {
   return parsed;
 }
 
+function lineTextForItem(item: TaskItem): string {
+  const payload = editableText(item);
+
+  if (item.kind === 'task') {
+    return payload.length > 0 ? `- ${payload}` : '- ';
+  }
+
+  if (item.kind === 'project') {
+    return `${payload}:`;
+  }
+
+  return payload;
+}
+
+function parseLineInput(raw: string): { kind: ItemKind; title: string; tags: Record<string, TagValue> } {
+  const trimmed = raw.trim();
+
+  let kind: ItemKind = 'note';
+  let payload = trimmed;
+
+  if (trimmed.startsWith('- ')) {
+    kind = 'task';
+    payload = trimmed.slice(2).trim();
+  } else if (trimmed.endsWith(':')) {
+    kind = 'project';
+    payload = trimmed.slice(0, -1).trim();
+  }
+
+  const parsed = parseEditableText(payload);
+
+  return {
+    kind,
+    title: parsed.title,
+    tags: parsed.tags,
+  };
+}
+
 function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -434,21 +471,9 @@ function App() {
     });
   };
 
-  const setItemKind = (id: string, kind: ItemKind) => {
-    mutateDoc((draft) => {
-      const item = draft.items[id];
-      if (!item) {
-        return;
-      }
-
-      item.kind = kind;
-      item.updatedAt = nowIso();
-    });
-  };
-
   const setItemText = (id: string, rawValue: string) => {
     const expanded = applyMacros(rawValue, doc.macros);
-    const parsed = parseEditableText(expanded);
+    const parsed = parseLineInput(expanded);
 
     mutateDoc((draft) => {
       const item = draft.items[id];
@@ -456,8 +481,50 @@ function App() {
         return;
       }
 
+      const nextTags: Record<string, TagValue> = { ...parsed.tags };
+
+      if (nextTags.today === true && nextTags.due === undefined) {
+        nextTags.due = normalizeDateValue('today');
+      }
+
+      if (nextTags.tomorrow === true && nextTags.due === undefined) {
+        nextTags.due = normalizeDateValue('tomorrow');
+      }
+
+      if (typeof nextTags.due === 'string') {
+        nextTags.due = normalizeDateValue(nextTags.due);
+      }
+
+      if (nextTags.done === true) {
+        nextTags.done = formatDateTime(new Date());
+      }
+
+      delete nextTags.dueToday;
+      delete nextTags.dueTomorrow;
+      delete nextTags.pastDue;
+
+      const dueStatus = dueStatusFor({
+        ...item,
+        kind: parsed.kind,
+        title: parsed.title,
+        tags: nextTags,
+      });
+
+      if (dueStatus === 'dueToday') {
+        nextTags.dueToday = true;
+      }
+
+      if (dueStatus === 'dueTomorrow') {
+        nextTags.dueTomorrow = true;
+      }
+
+      if (dueStatus === 'pastDue') {
+        nextTags.pastDue = true;
+      }
+
+      item.kind = parsed.kind;
       item.title = parsed.title;
-      item.tags = parsed.tags;
+      item.tags = nextTags;
       item.updatedAt = nowIso();
     });
   };
@@ -1010,66 +1077,15 @@ function App() {
             {item.children.length === 0 ? '·' : item.collapsed ? '▸' : '▾'}
           </button>
 
-          <select
-            className="kind"
-            value={item.kind}
-            onClick={(event) => event.stopPropagation()}
-            onChange={(event) => setItemKind(id, event.target.value as ItemKind)}
-            title="Item type"
-          >
-            <option value="project">Project</option>
-            <option value="task">Task</option>
-            <option value="note">Note</option>
-          </select>
-
           <input
             className="line"
-            value={editableText(item)}
+            value={lineTextForItem(item)}
             onFocus={() => selectItem(id)}
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => setItemText(id, event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Type title and tags like @due(2026-03-06)"
+            placeholder="Type plain text patterns: - task @due(today), Project:, note"
           />
-
-          <div className="row-actions">
-            {item.kind === 'task' && (
-              <button
-                type="button"
-                className={`checkbox ${done ? 'checked' : ''}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleDone(id);
-                }}
-                title="Toggle done"
-              >
-                {done ? 'Done' : 'Do'}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                selectItem(id);
-                addChild('task');
-              }}
-              title="Add child task"
-            >
-              +child
-            </button>
-
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setDoc((previous) => ({ ...previous, focusId: id }));
-              }}
-              title="Focus branch"
-            >
-              focus
-            </button>
-          </div>
         </div>
 
         {openChildren && item.children.map((childId) => renderTree(childId, depth + 1))}
@@ -1211,6 +1227,18 @@ function App() {
           </div>
 
           <div className="right">
+            <button
+              type="button"
+              onClick={() => {
+                if (!doc.selectedId) {
+                  return;
+                }
+
+                setDoc((previous) => ({ ...previous, focusId: previous.selectedId }));
+              }}
+            >
+              Focus Selected
+            </button>
             <button type="button" onClick={deleteSelected}>
               Delete
             </button>

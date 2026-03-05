@@ -127,24 +127,25 @@
 }
 
 .editor {
-  padding: 0.85rem 1rem 1.3rem;
+  padding: 1rem 1.2rem 1.3rem;
   overflow-y: auto;
+  background: linear-gradient(180deg, rgba(253, 254, 253, 0.74) 0%, rgba(236, 243, 238, 0.52) 100%);
 }
 
 .row {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
-  gap: 0.45rem;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem;
   align-items: center;
-  padding: 0.32rem 0.45rem;
-  border-radius: 10px;
-  margin: 0.12rem 0;
-  border: 1px solid transparent;
+  padding: 0.18rem 0.38rem;
+  border-radius: 6px;
+  margin: 0.06rem 0;
+  border-left: 2px solid transparent;
 }
 
 .row.selected {
-  background: rgba(51, 95, 196, 0.12);
-  border-color: rgba(51, 95, 196, 0.24);
+  background: rgba(51, 95, 196, 0.08);
+  border-left-color: rgba(51, 95, 196, 0.7);
 }
 
 .row.done .line {
@@ -152,16 +153,16 @@
   color: #64717e;
 }
 
-.row.pastDue {
-  background: rgba(192, 26, 55, 0.1);
+.row.pastDue .line {
+  color: #9a2c34;
 }
 
-.row.dueToday {
-  background: rgba(226, 130, 6, 0.13);
+.row.dueToday .line {
+  color: #8a6000;
 }
 
-.row.dueTomorrow {
-  background: rgba(32, 117, 76, 0.1);
+.row.dueTomorrow .line {
+  color: #176648;
 }
 
 .row.depth-1 {
@@ -191,16 +192,31 @@
 
 .line {
   width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0.12rem 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1rem;
+  line-height: 1.4;
 }
 
-.row-actions {
-  display: flex;
-  gap: 0.3rem;
+.line:focus {
+  outline: none;
 }
 
-.checkbox.checked {
-  background: #1d7d52;
-  color: #fff;
+.collapse {
+  border: 0;
+  background: transparent;
+  color: #607187;
+  padding: 0;
+  width: 1.1rem;
+  min-height: 1.1rem;
+  border-radius: 4px;
+}
+
+.collapse:hover {
+  background: rgba(80, 110, 148, 0.12);
 }
 
 .hints {
@@ -284,26 +300,15 @@ button:focus {
   }
 
   .row {
-    grid-template-columns: auto auto 1fr;
-    grid-template-areas:
-      'collapse kind input'
-      '. actions actions';
+    grid-template-columns: auto 1fr;
   }
 
   .collapse {
-    grid-area: collapse;
-  }
-
-  .kind {
-    grid-area: kind;
+    align-self: start;
+    margin-top: 0.2rem;
   }
 
   .line {
-    grid-area: input;
-  }
-
-  .row-actions {
-    grid-area: actions;
-    justify-content: flex-start;
+    font-size: 0.95rem;
   }
 }
