@@ -53,6 +53,7 @@ type PersistedState = {
   macros: MacroDef[];
   savedSearches: SavedSearch[];
   sectionVisibility: SectionVisibility;
+  sidebarCollapsed: boolean;
 };
 
 type PendingSelection = {
@@ -522,6 +523,7 @@ function parseLoadedState(raw: string | null): PersistedState | null {
         ? parsed.savedSearches.filter((search) => search.id && search.name)
         : [],
       sectionVisibility: parsed.sectionVisibility ?? DEFAULT_SECTIONS,
+      sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
     };
   } catch {
     return null;
@@ -622,6 +624,7 @@ function App() {
   const [newMacroTrigger, setNewMacroTrigger] = useState('');
   const [newMacroReplacement, setNewMacroReplacement] = useState('');
   const [filterQuery, setFilterQuery] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => loaded?.sidebarCollapsed ?? false);
   const [focusByTab, setFocusByTab] = useState<Record<string, FocusRange>>({});
   const [collapsedByTab, setCollapsedByTab] = useState<Record<string, string[]>>({});
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
@@ -676,10 +679,11 @@ function App() {
       macros,
       savedSearches,
       sectionVisibility,
+      sidebarCollapsed,
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [tabs, activeTab, macros, savedSearches, sectionVisibility]);
+  }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed]);
 
   useEffect(() => {
     const pending = pendingSelectionRef.current;
@@ -1775,8 +1779,8 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="left-panel">
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className={`left-panel ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <section className="panel-block">
           <div className="panel-head">
             <h2>Projects</h2>
@@ -1905,6 +1909,9 @@ function App() {
       <main className="editor-panel">
         <header className="tabs-bar">
           <div className="tabs">
+            <button type="button" className="sidebar-toggle" onClick={() => setSidebarCollapsed((previous) => !previous)}>
+              {sidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
+            </button>
             {tabs.map((tab) => (
               <div key={tab.id} className={`tab-chip ${tab.id === activeTab.id ? 'active' : ''}`}>
                 <button type="button" onClick={() => switchTab(tab.id)}>

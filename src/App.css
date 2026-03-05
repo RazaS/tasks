@@ -6,6 +6,10 @@
   color: #172633;
 }
 
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+
 .left-panel {
   border-right: 1px solid #c4d2c4;
   padding: 0.9rem;
@@ -14,6 +18,14 @@
   gap: 0.85rem;
   overflow-y: auto;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(244, 251, 243, 0.42) 100%);
+}
+
+.left-panel.collapsed {
+  width: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .panel-block {
@@ -131,6 +143,10 @@
 
 .new-tab {
   border-style: dashed;
+}
+
+.sidebar-toggle {
+  font-weight: 700;
 }
 
 .top-actions {
@@ -347,10 +363,18 @@ button:focus {
     grid-template-rows: auto 1fr;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-rows: 0 1fr;
+  }
+
   .left-panel {
     border-right: 0;
     border-bottom: 1px solid #c4d2c4;
     max-height: 42vh;
+  }
+
+  .left-panel.collapsed {
+    display: none;
   }
 }
 
