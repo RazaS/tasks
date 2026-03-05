@@ -1,17 +1,18 @@
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 310px 1fr;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 42vh) minmax(0, 1fr);
   background: radial-gradient(circle at 15% 12%, #f7efe5 0%, #ecf1e7 45%, #e2eee9 100%);
   color: #172633;
 }
 
 .app-shell.sidebar-collapsed {
-  grid-template-columns: 0 1fr;
+  grid-template-rows: 0 minmax(0, 1fr);
 }
 
 .left-panel {
-  border-right: 1px solid #c4d2c4;
+  border-bottom: 1px solid #c4d2c4;
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
@@ -21,11 +22,12 @@
 }
 
 .left-panel.collapsed {
-  width: 0;
+  height: 0;
   padding: 0;
   border: 0;
   overflow: hidden;
   pointer-events: none;
+  opacity: 0;
 }
 
 .panel-block {
@@ -147,6 +149,15 @@
 
 .sidebar-toggle {
   font-weight: 700;
+}
+
+.icon-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
 }
 
 .top-actions {
@@ -345,6 +356,56 @@ select:focus,
 button:focus {
   outline: 2px solid #5b7fcd;
   outline-offset: 1px;
+}
+
+.app-shell.dark {
+  background: radial-gradient(circle at 15% 12%, #1c2530 0%, #131d27 45%, #0f1720 100%);
+  color: #d6e2ef;
+}
+
+.app-shell.dark .left-panel,
+.app-shell.dark .panel-block,
+.app-shell.dark .tabs-bar,
+.app-shell.dark .command-bar,
+.app-shell.dark .outline-surface,
+.app-shell.dark .editor-footer {
+  background: rgba(17, 28, 40, 0.88);
+  border-color: #314254;
+}
+
+.app-shell.dark .panel-head h2,
+.app-shell.dark .outline-head,
+.app-shell.dark .tree-title,
+.app-shell.dark .tree-tags,
+.app-shell.dark .editor-footer,
+.app-shell.dark .saved-main,
+.app-shell.dark .macro-row span {
+  color: #c6d7ea;
+}
+
+.app-shell.dark .free-editor {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #0f1a26,
+      #0f1a26 calc(1.55em - 1px),
+      rgba(74, 97, 122, 0.45) calc(1.55em - 1px),
+      rgba(74, 97, 122, 0.45) 1.55em
+    );
+  border-color: #38516b;
+  color: #dde8f4;
+}
+
+.app-shell.dark button,
+.app-shell.dark input,
+.app-shell.dark select {
+  background: #1b2a3a;
+  border-color: #40546a;
+  color: #d3e0ef;
+}
+
+.app-shell.dark button:hover {
+  background: #24384d;
 }
 
 @media (max-width: 1220px) {

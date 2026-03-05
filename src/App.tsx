@@ -54,6 +54,7 @@ type PersistedState = {
   savedSearches: SavedSearch[];
   sectionVisibility: SectionVisibility;
   sidebarCollapsed: boolean;
+  darkMode: boolean;
 };
 
 type PendingSelection = {
@@ -524,6 +525,7 @@ function parseLoadedState(raw: string | null): PersistedState | null {
         : [],
       sectionVisibility: parsed.sectionVisibility ?? DEFAULT_SECTIONS,
       sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
+      darkMode: Boolean(parsed.darkMode),
     };
   } catch {
     return null;
@@ -625,6 +627,7 @@ function App() {
   const [newMacroReplacement, setNewMacroReplacement] = useState('');
   const [filterQuery, setFilterQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => loaded?.sidebarCollapsed ?? false);
+  const [darkMode, setDarkMode] = useState<boolean>(() => loaded?.darkMode ?? false);
   const [focusByTab, setFocusByTab] = useState<Record<string, FocusRange>>({});
   const [collapsedByTab, setCollapsedByTab] = useState<Record<string, string[]>>({});
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
@@ -680,10 +683,11 @@ function App() {
       savedSearches,
       sectionVisibility,
       sidebarCollapsed,
+      darkMode,
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed]);
+  }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed, darkMode]);
 
   useEffect(() => {
     const pending = pendingSelectionRef.current;
@@ -1779,7 +1783,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark' : ''}`}>
       <aside className={`left-panel ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <section className="panel-block">
           <div className="panel-head">
@@ -1930,6 +1934,28 @@ function App() {
           </div>
 
           <div className="top-actions">
+            <button
+              type="button"
+              className="icon-toggle"
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              onClick={() => setDarkMode((previous) => !previous)}
+            >
+              {darkMode ? (
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M12 4a1 1 0 0 1 1 1v1.3a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1Zm0 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 4a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 12a1 1 0 0 1 1-1h1.3a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm12.7 0a1 1 0 0 1 1-1H19a1 1 0 1 1 0 2h-1.3a1 1 0 0 1-1-1ZM6.8 6.8a1 1 0 0 1 1.4 0l.9.9a1 1 0 0 1-1.4 1.4l-.9-.9a1 1 0 0 1 0-1.4Zm8.1 8.1a1 1 0 0 1 1.4 0l.9.9a1 1 0 0 1-1.4 1.4l-.9-.9a1 1 0 0 1 0-1.4ZM17.2 6.8a1 1 0 0 1 0 1.4l-.9.9a1 1 0 1 1-1.4-1.4l.9-.9a1 1 0 0 1 1.4 0Zm-8.1 8.1a1 1 0 0 1 0 1.4l-.9.9a1 1 0 1 1-1.4-1.4l.9-.9a1 1 0 0 1 1.4 0Z"
+                  />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M14.8 3.2a1 1 0 0 1 .9 1.4 8 8 0 1 0 3.7 10.3 1 1 0 0 1 1.9.5A10 10 0 1 1 13.9 2.8a1 1 0 0 1 .9.4Z"
+                  />
+                </svg>
+              )}
+            </button>
             <button type="button" onClick={renameActiveTab}>
               Rename Tab
             </button>
