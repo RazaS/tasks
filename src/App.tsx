@@ -690,6 +690,7 @@ function App() {
   const [collapsedByTab, setCollapsedByTab] = useState<Record<string, string[]>>({});
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
   const [statusMessage, setStatusMessage] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
   const [authToken, setAuthToken] = useState<string>(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)));
   const [isSyncReady, setIsSyncReady] = useState(false);
@@ -831,6 +832,25 @@ function App() {
       window.clearTimeout(timeoutId);
     };
   }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed, darkMode, isAuthenticated, authToken, isSyncReady]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+        event.preventDefault();
+        setShowGuide((previous) => !previous);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        setShowGuide(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     const pending = pendingSelectionRef.current;
@@ -1519,6 +1539,12 @@ function App() {
       return;
     }
 
+    if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+      event.preventDefault();
+      setShowGuide((previous) => !previous);
+      return;
+    }
+
     if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
       event.preventDefault();
       moveSelectionToProject();
@@ -2183,6 +2209,9 @@ function App() {
           </div>
 
           <div className="top-actions">
+            <button type="button" onClick={() => setShowGuide(true)}>
+              Guide
+            </button>
             <button type="button" onClick={handleLogout}>
               Logout
             </button>
@@ -2321,6 +2350,108 @@ function App() {
           <span>{statusMessage}</span>
         </footer>
       </main>
+
+      {showGuide && (
+        <div
+          className="guide-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="guide-title"
+          onClick={() => setShowGuide(false)}
+        >
+          <section className="guide-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="guide-head">
+              <h2 id="guide-title">Navigation Guide</h2>
+              <button type="button" className="guide-close" onClick={() => setShowGuide(false)} aria-label="Close guide">
+                ×
+              </button>
+            </div>
+
+            <div className="guide-content">
+              <p>
+                <strong>Quick Open:</strong> press <kbd>Cmd/Ctrl + /</kbd> anytime. Press <kbd>Esc</kbd> to close.
+              </p>
+
+              <section className="guide-section">
+                <h3>Typing Conventions</h3>
+                <ul>
+                  <li>
+                    <strong>Project:</strong> end a line with <code>:</code> (example: <em>Launch Plan:</em>)
+                  </li>
+                  <li>
+                    <strong>Task:</strong> start with <code>- </code> (example: <em>- Draft homepage copy</em>)
+                  </li>
+                  <li>
+                    <strong>Note:</strong> any plain line that is not a project/task pattern
+                  </li>
+                  <li>
+                    <strong>Tags:</strong> type <code>@tag</code> or <code>@tag(value)</code> (example: <code>@due(2026-03-08)</code>)
+                  </li>
+                  <li>
+                    <strong>Macros:</strong> triggers like <code>;lx</code> auto-expand while typing
+                  </li>
+                </ul>
+              </section>
+
+              <section className="guide-section">
+                <h3>Core Keyboard</h3>
+                <ul>
+                  <li>
+                    <kbd>Enter</kbd>: new item with auto-format/indent
+                  </li>
+                  <li>
+                    <kbd>Option + Enter</kbd>: plain newline
+                  </li>
+                  <li>
+                    <kbd>Tab</kbd> / <kbd>Shift + Tab</kbd>: indent / outdent
+                  </li>
+                  <li>
+                    <kbd>Cmd/Ctrl + D</kbd>: toggle <code>@done</code> on selected tasks
+                  </li>
+                  <li>
+                    <kbd>Cmd/Ctrl + Shift + A</kbd>: archive done items to <em>Archive:</em>
+                  </li>
+                </ul>
+              </section>
+
+              <section className="guide-section">
+                <h3>Selection and Organization</h3>
+                <ul>
+                  <li>
+                    <kbd>Cmd/Ctrl + Shift + D</kbd>: duplicate selected lines
+                  </li>
+                  <li>
+                    <kbd>Ctrl + Shift + K</kbd>: delete selected lines
+                  </li>
+                  <li>
+                    <kbd>Cmd/Ctrl + \</kbd>: move selection to a project
+                  </li>
+                  <li>
+                    <kbd>Cmd + Ctrl + ↑/↓</kbd>: move selected lines up/down
+                  </li>
+                  <li>
+                    <kbd>Cmd/Ctrl + T</kbd>: apply tags to selection
+                  </li>
+                </ul>
+              </section>
+
+              <section className="guide-section">
+                <h3>Filter and Focus</h3>
+                <ul>
+                  <li>
+                    <kbd>Cmd/Ctrl + Shift + F</kbd>: jump to filter box
+                  </li>
+                  <li>
+                    Use queries like <code>not @done</code>, <code>@due(today)</code>, or <code>@done and @today</code>
+                  </li>
+                  <li>Click a project in the sidebar to focus that branch</li>
+                  <li>Use the tab bar to switch documents; each tab has its own hierarchy context</li>
+                </ul>
+              </section>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

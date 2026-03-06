@@ -393,6 +393,90 @@
   font-size: 0.82rem;
 }
 
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(13, 22, 30, 0.46);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.guide-modal {
+  width: min(920px, 100%);
+  max-height: min(86vh, 860px);
+  overflow: auto;
+  border: 1px solid #b9c9b7;
+  border-radius: 16px;
+  background: #f9fcf8;
+  box-shadow: 0 26px 60px rgba(18, 38, 28, 0.24);
+}
+
+.guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.8rem 0.95rem;
+  border-bottom: 1px solid #ccdbc8;
+  position: sticky;
+  top: 0;
+  background: #f9fcf8;
+}
+
+.guide-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.guide-close {
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.guide-content {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.95rem;
+  color: #1d2b3a;
+}
+
+.guide-section {
+  border: 1px solid #d0dece;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.7rem 0.75rem;
+}
+
+.guide-section h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #2f4f67;
+}
+
+.guide-section ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+kbd {
+  border: 1px solid #bacab7;
+  border-radius: 6px;
+  background: #edf4ec;
+  padding: 0.08rem 0.35rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+}
+
 button,
 input,
 select {
@@ -470,6 +554,30 @@ button:focus {
 
 .app-shell.dark .login-error {
   color: #ffb1b1;
+}
+
+.app-shell.dark .guide-modal,
+.app-shell.dark .guide-head {
+  background: #142231;
+  border-color: #34495d;
+}
+
+.app-shell.dark .guide-content {
+  color: #d7e3f1;
+}
+
+.app-shell.dark .guide-section {
+  background: #1a2a3b;
+  border-color: #3b5167;
+}
+
+.app-shell.dark .guide-section h3 {
+  color: #9ec1e3;
+}
+
+.app-shell.dark kbd {
+  background: #253a50;
+  border-color: #4e6580;
 }
 
 .app-shell.dark button,
@@ -555,5 +663,13 @@ button:focus {
   .editor-footer {
     flex-direction: column;
     gap: 0.35rem;
+  }
+
+  .guide-overlay {
+    padding: 0.55rem;
+  }
+
+  .guide-modal {
+    max-height: 92vh;
   }
 }
