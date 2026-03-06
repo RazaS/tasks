@@ -19,11 +19,8 @@ import {
   tagsToString,
 } from './lib/taskpaper';
 
-const STORAGE_KEY = 'taskforge-plain-text-v3-raza';
-const LEGACY_STORAGE_KEYS = ['taskforge-plain-text-v2'];
-const AUTH_STORAGE_KEY = 'taskforge-auth-v1';
-const AUTH_USERNAME = 'raza';
-const AUTH_PASSWORD = 'password';
+const AUTH_TOKEN_STORAGE_KEY = 'taskforge-auth-token-v1';
+const API_BASE = '/api';
 
 type EditorTab = {
   id: string;
@@ -139,13 +136,7 @@ type QuickAction =
   | 'tag_start'
   | 'export_reminders';
 
-const DEFAULT_TEXT = `Getting Started:
-\t- Type a task and press Enter
-\t- Use Tab / Shift+Tab to indent and outdent
-\nProject 1:
-\t- First task
-\t- Second task
-`;
+const DEFAULT_TEXT = '';
 
 const DEFAULT_MACROS: MacroDef[] = [
   { id: createId('macro'), trigger: ';lx', replacement: 'los angeles' },
@@ -499,64 +490,108 @@ function outdentSelection(text: string, start: number, end: number): { nextText:
   };
 }
 
-function parseLoadedState(raw: string | null): PersistedState | null {
-  if (!raw) {
+function normalizePersistedState(raw: unknown): PersistedState | null {
+  if (!raw || typeof raw !== 'object') {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(raw) as PersistedState;
-
-    if (!Array.isArray(parsed.tabs) || parsed.tabs.length === 0) {
-      return null;
-    }
-
-    const validTabs = parsed.tabs.filter((tab) => tab.id && tab.name && typeof tab.text === 'string');
-
-    if (validTabs.length === 0) {
-      return null;
-    }
-
-    return {
-      tabs: validTabs.map((tab) => ({
-        ...tab,
-        selectionStart: Number.isFinite(tab.selectionStart) ? tab.selectionStart : tab.text.length,
-        selectionEnd: Number.isFinite(tab.selectionEnd) ? tab.selectionEnd : tab.text.length,
-      })),
-      activeTabId: parsed.activeTabId,
-      macros: Array.isArray(parsed.macros) ? parsed.macros.filter((macro) => macro.trigger && macro.replacement) : [],
-      savedSearches: Array.isArray(parsed.savedSearches)
-        ? parsed.savedSearches.filter((search) => search.id && search.name)
-        : [],
-      sectionVisibility: {
-        ...DEFAULT_SECTIONS,
-        ...(parsed.sectionVisibility ?? {}),
-      },
-      sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
-      darkMode: Boolean(parsed.darkMode),
-    };
-  } catch {
+  const parsed = raw as Partial<PersistedState>;
+  if (!Array.isArray(parsed.tabs) || parsed.tabs.length === 0) {
     return null;
   }
+
+  const validTabs = parsed.tabs.filter((tab) => tab.id && tab.name && typeof tab.text === 'string');
+  if (validTabs.length === 0) {
+    return null;
+  }
+
+  return {
+    tabs: validTabs.map((tab) => ({
+      ...tab,
+      selectionStart: Number.isFinite(tab.selectionStart) ? tab.selectionStart : tab.text.length,
+      selectionEnd: Number.isFinite(tab.selectionEnd) ? tab.selectionEnd : tab.text.length,
+    })),
+    activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : validTabs[0].id,
+    macros: Array.isArray(parsed.macros) ? parsed.macros.filter((macro) => macro.trigger && macro.replacement) : [],
+    savedSearches: Array.isArray(parsed.savedSearches)
+      ? parsed.savedSearches.filter((search) => search.id && search.name)
+      : [],
+    sectionVisibility: {
+      ...DEFAULT_SECTIONS,
+      ...(parsed.sectionVisibility ?? {}),
+    },
+    sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
+    darkMode: Boolean(parsed.darkMode),
+  };
 }
 
-function loadPersistedState(): PersistedState | null {
-  const current = parseLoadedState(localStorage.getItem(STORAGE_KEY));
-  if (current) {
-    return current;
+async function loginApi(username: string, password: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      username,
+      password,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('login_failed');
   }
 
-  for (const legacyKey of LEGACY_STORAGE_KEYS) {
-    const legacy = parseLoadedState(localStorage.getItem(legacyKey));
-    if (!legacy) {
-      continue;
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
-    return legacy;
+  const parsed = (await response.json()) as { token?: string };
+  if (!parsed.token) {
+    throw new Error('missing_token');
   }
 
-  return null;
+  return parsed.token;
+}
+
+async function loadRemoteState(token: string): Promise<PersistedState> {
+  const response = await fetch(`${API_BASE}/state`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 401) {
+    throw new Error('unauthorized');
+  }
+
+  if (!response.ok) {
+    throw new Error('load_failed');
+  }
+
+  const parsed = (await response.json()) as { state?: unknown };
+  const normalized = normalizePersistedState(parsed.state);
+  if (!normalized) {
+    throw new Error('invalid_state');
+  }
+
+  return normalized;
+}
+
+async function saveRemoteState(token: string, state: PersistedState): Promise<void> {
+  const response = await fetch(`${API_BASE}/state`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      state,
+    }),
+  });
+
+  if (response.status === 401) {
+    throw new Error('unauthorized');
+  }
+
+  if (!response.ok) {
+    throw new Error('save_failed');
+  }
 }
 
 function buildMatchMap(outline: OutlineModel, query: string): Record<string, boolean> {
@@ -641,25 +676,24 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pendingSelectionRef = useRef<PendingSelection | null>(null);
 
-  const loaded = useMemo(() => loadPersistedState(), []);
-
-  const [tabs, setTabs] = useState<EditorTab[]>(() => loaded?.tabs ?? [createTab('Home', DEFAULT_TEXT)]);
-  const [activeTabId, setActiveTabId] = useState<string>(() => loaded?.activeTabId ?? loaded?.tabs[0]?.id ?? '');
-  const [macros, setMacros] = useState<MacroDef[]>(() => (loaded?.macros.length ? loaded.macros : DEFAULT_MACROS));
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() =>
-    loaded?.savedSearches.length ? loaded.savedSearches : DEFAULT_SEARCHES,
-  );
-  const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>(() => loaded?.sectionVisibility ?? DEFAULT_SECTIONS);
+  const [tabs, setTabs] = useState<EditorTab[]>([createTab('Home', DEFAULT_TEXT)]);
+  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id ?? '');
+  const [macros, setMacros] = useState<MacroDef[]>(DEFAULT_MACROS);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(DEFAULT_SEARCHES);
+  const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>(DEFAULT_SECTIONS);
   const [newMacroTrigger, setNewMacroTrigger] = useState('');
   const [newMacroReplacement, setNewMacroReplacement] = useState('');
   const [filterQuery, setFilterQuery] = useState('');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => loaded?.sidebarCollapsed ?? false);
-  const [darkMode, setDarkMode] = useState<boolean>(() => loaded?.darkMode ?? false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const [focusByTab, setFocusByTab] = useState<Record<string, FocusRange>>({});
   const [collapsedByTab, setCollapsedByTab] = useState<Record<string, string[]>>({});
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
   const [statusMessage, setStatusMessage] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem(AUTH_STORAGE_KEY) === AUTH_USERNAME);
+  const [authToken, setAuthToken] = useState<string>(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)));
+  const [isSyncReady, setIsSyncReady] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -703,7 +737,68 @@ function App() {
   }, [collapsedByTab, activeTab]);
 
   useEffect(() => {
-    if (!activeTab) {
+    localStorage.removeItem('taskforge-plain-text-v2');
+    localStorage.removeItem('taskforge-plain-text-v3-raza');
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !authToken) {
+      setIsSyncReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSyncing(true);
+    setStatusMessage('Loading synced task list...');
+
+    void (async () => {
+      try {
+        const remoteState = await loadRemoteState(authToken);
+        if (cancelled) {
+          return;
+        }
+
+        setTabs(remoteState.tabs);
+        setActiveTabId(remoteState.activeTabId);
+        setMacros(remoteState.macros.length ? remoteState.macros : DEFAULT_MACROS);
+        setSavedSearches(remoteState.savedSearches.length ? remoteState.savedSearches : DEFAULT_SEARCHES);
+        setSectionVisibility(remoteState.sectionVisibility);
+        setSidebarCollapsed(remoteState.sidebarCollapsed);
+        setDarkMode(remoteState.darkMode);
+        setFocusByTab({});
+        setCollapsedByTab({});
+        setFilterQuery('');
+        setStatusMessage('Synced latest task list.');
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        if (error instanceof Error && error.message === 'unauthorized') {
+          localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+          setAuthToken('');
+          setIsAuthenticated(false);
+          setLoginError('Session expired. Please sign in again.');
+          setStatusMessage('Session expired.');
+          return;
+        }
+
+        setStatusMessage('Unable to load synced task list.');
+      } finally {
+        if (!cancelled) {
+          setIsSyncing(false);
+          setIsSyncReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, authToken]);
+
+  useEffect(() => {
+    if (!activeTab || !isAuthenticated || !authToken || !isSyncReady) {
       return;
     }
 
@@ -717,8 +812,25 @@ function App() {
       darkMode,
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed, darkMode]);
+    const timeoutId = window.setTimeout(() => {
+      void saveRemoteState(authToken, payload).catch((error) => {
+        if (error instanceof Error && error.message === 'unauthorized') {
+          localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+          setAuthToken('');
+          setIsAuthenticated(false);
+          setLoginError('Session expired. Please sign in again.');
+          setStatusMessage('Session expired.');
+          return;
+        }
+
+        setStatusMessage('Sync save failed. Changes will retry.');
+      });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed, darkMode, isAuthenticated, authToken, isSyncReady]);
 
   useEffect(() => {
     const pending = pendingSelectionRef.current;
@@ -1761,21 +1873,36 @@ function App() {
 
   const handleLogin: FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
+    const username = loginUsername.trim();
+    const password = loginPassword;
 
-    if (loginUsername.trim() !== AUTH_USERNAME || loginPassword !== AUTH_PASSWORD) {
-      setLoginError('Incorrect username or password.');
+    if (!username || !password) {
+      setLoginError('Enter username and password.');
       return;
     }
 
-    localStorage.setItem(AUTH_STORAGE_KEY, AUTH_USERNAME);
-    setIsAuthenticated(true);
-    setLoginPassword('');
     setLoginError('');
+
+    void (async () => {
+      try {
+        const token = await loginApi(username, password);
+        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+        setAuthToken(token);
+        setIsAuthenticated(true);
+        setIsSyncReady(false);
+        setLoginPassword('');
+      } catch {
+        setLoginError('Incorrect username or password.');
+      }
+    })();
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    setAuthToken('');
     setIsAuthenticated(false);
+    setIsSyncReady(false);
+    setIsSyncing(false);
     setLoginUsername('');
     setLoginPassword('');
     setLoginError('');
@@ -1868,6 +1995,22 @@ function App() {
               <button type="submit">Login</button>
             </form>
             {loginError && <p className="login-error">{loginError}</p>}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isSyncReady || isSyncing) {
+    return (
+      <div className={`app-shell auth-shell ${darkMode ? 'dark' : ''}`}>
+        <main className="login-shell">
+          <section className="login-card">
+            <h1>Syncing</h1>
+            <p>Loading shared task list for this account.</p>
+            <button type="button" onClick={handleLogout}>
+              Logout
+            </button>
           </section>
         </main>
       </div>
