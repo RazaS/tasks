@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEventHandler,
+  type FormEventHandler,
   type KeyboardEventHandler,
 } from 'react';
 import './App.css';
@@ -18,7 +19,11 @@ import {
   tagsToString,
 } from './lib/taskpaper';
 
-const STORAGE_KEY = 'taskforge-plain-text-v2';
+const STORAGE_KEY = 'taskforge-plain-text-v3-raza';
+const LEGACY_STORAGE_KEYS = ['taskforge-plain-text-v2'];
+const AUTH_STORAGE_KEY = 'taskforge-auth-v1';
+const AUTH_USERNAME = 'raza';
+const AUTH_PASSWORD = 'password';
 
 type EditorTab = {
   id: string;
@@ -523,13 +528,35 @@ function parseLoadedState(raw: string | null): PersistedState | null {
       savedSearches: Array.isArray(parsed.savedSearches)
         ? parsed.savedSearches.filter((search) => search.id && search.name)
         : [],
-      sectionVisibility: parsed.sectionVisibility ?? DEFAULT_SECTIONS,
+      sectionVisibility: {
+        ...DEFAULT_SECTIONS,
+        ...(parsed.sectionVisibility ?? {}),
+      },
       sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
       darkMode: Boolean(parsed.darkMode),
     };
   } catch {
     return null;
   }
+}
+
+function loadPersistedState(): PersistedState | null {
+  const current = parseLoadedState(localStorage.getItem(STORAGE_KEY));
+  if (current) {
+    return current;
+  }
+
+  for (const legacyKey of LEGACY_STORAGE_KEYS) {
+    const legacy = parseLoadedState(localStorage.getItem(legacyKey));
+    if (!legacy) {
+      continue;
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+    return legacy;
+  }
+
+  return null;
 }
 
 function buildMatchMap(outline: OutlineModel, query: string): Record<string, boolean> {
@@ -614,7 +641,7 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pendingSelectionRef = useRef<PendingSelection | null>(null);
 
-  const loaded = parseLoadedState(localStorage.getItem(STORAGE_KEY));
+  const loaded = useMemo(() => loadPersistedState(), []);
 
   const [tabs, setTabs] = useState<EditorTab[]>(() => loaded?.tabs ?? [createTab('Home', DEFAULT_TEXT)]);
   const [activeTabId, setActiveTabId] = useState<string>(() => loaded?.activeTabId ?? loaded?.tabs[0]?.id ?? '');
@@ -632,6 +659,10 @@ function App() {
   const [collapsedByTab, setCollapsedByTab] = useState<Record<string, string[]>>({});
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
   const [statusMessage, setStatusMessage] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem(AUTH_STORAGE_KEY) === AUTH_USERNAME);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
 
   const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0]?.id ?? '';
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === resolvedActiveTabId) ?? null, [tabs, resolvedActiveTabId]);
@@ -1728,6 +1759,30 @@ function App() {
     setStatusMessage('Focus cleared.');
   };
 
+  const handleLogin: FormEventHandler<HTMLFormElement> = (event) => {
+    event.preventDefault();
+
+    if (loginUsername.trim() !== AUTH_USERNAME || loginPassword !== AUTH_PASSWORD) {
+      setLoginError('Incorrect username or password.');
+      return;
+    }
+
+    localStorage.setItem(AUTH_STORAGE_KEY, AUTH_USERNAME);
+    setIsAuthenticated(true);
+    setLoginPassword('');
+    setLoginError('');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setIsAuthenticated(false);
+    setLoginUsername('');
+    setLoginPassword('');
+    setLoginError('');
+    setFilterQuery('');
+    setStatusMessage('Logged out.');
+  };
+
   const visibleProjectIds = outline.projectIds.filter((id) => matchMap[id]);
 
   const renderTree = (nodeId: string, depth = 0) => {
@@ -1777,6 +1832,47 @@ function App() {
       </div>
     );
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className={`app-shell auth-shell ${darkMode ? 'dark' : ''}`}>
+        <main className="login-shell">
+          <section className="login-card">
+            <h1>Tasks</h1>
+            <p>Sign in to load your saved tabs and lists.</p>
+            <form className="login-form" onSubmit={handleLogin}>
+              <input
+                type="text"
+                value={loginUsername}
+                onChange={(event) => {
+                  setLoginUsername(event.target.value);
+                  if (loginError) {
+                    setLoginError('');
+                  }
+                }}
+                placeholder="Username"
+                autoComplete="username"
+              />
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(event) => {
+                  setLoginPassword(event.target.value);
+                  if (loginError) {
+                    setLoginError('');
+                  }
+                }}
+                placeholder="Password"
+                autoComplete="current-password"
+              />
+              <button type="submit">Login</button>
+            </form>
+            {loginError && <p className="login-error">{loginError}</p>}
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   if (!activeTab) {
     return <div className="empty-app">No tabs available.</div>;
@@ -1934,6 +2030,9 @@ function App() {
           </div>
 
           <div className="top-actions">
+            <button type="button" onClick={handleLogout}>
+              Logout
+            </button>
             <button
               type="button"
               className="icon-toggle"
