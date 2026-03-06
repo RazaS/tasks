@@ -1880,6 +1880,16 @@ function App() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark' : ''}`}>
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          className="sidebar-restore-fab"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-label="Show sidebar"
+        >
+          Show Sidebar
+        </button>
+      )}
       <aside className={`left-panel ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <section className="panel-block">
           <div className="panel-head">
