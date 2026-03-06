@@ -65,6 +65,13 @@ type PendingSelection = {
   focus: boolean;
 };
 
+type DatePickerState = {
+  mode: 'append' | 'insert';
+  start: number;
+  end: number;
+  tagName?: 'due' | 'start';
+};
+
 type ItemKind = 'project' | 'task' | 'note';
 
 type ParsedLine = {
@@ -671,6 +678,7 @@ function expandMacrosAtCursor(
 
 function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const importReminderRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -691,6 +699,8 @@ function App() {
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
   const [statusMessage, setStatusMessage] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [datePickerState, setDatePickerState] = useState<DatePickerState | null>(null);
+  const [datePickerValue, setDatePickerValue] = useState(() => formatDate(new Date()));
   const [authToken, setAuthToken] = useState<string>(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)));
   const [isSyncReady, setIsSyncReady] = useState(false);
@@ -843,6 +853,7 @@ function App() {
 
       if (event.key === 'Escape') {
         setShowGuide(false);
+        setDatePickerState(null);
       }
     };
 
@@ -851,6 +862,16 @@ function App() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!datePickerState) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      dateInputRef.current?.focus();
+    });
+  }, [datePickerState]);
 
   useEffect(() => {
     const pending = pendingSelectionRef.current;
@@ -1301,23 +1322,42 @@ function App() {
     setStatusMessage(`Archived ${topDoneIds.length} done branch(es) to Archive.`);
   };
 
-  const insertDateText = (tagName?: 'due' | 'start') => {
-    const suggested = formatDate(new Date());
-    const picked = window.prompt('Insert date (supports today, tomorrow, +7d, yyyy-mm-dd)', suggested);
-    if (!picked) {
+  const openDatePicker = (mode: DatePickerState['mode'], start: number, end: number, tagName?: 'due' | 'start') => {
+    setDatePickerValue(formatDate(new Date()));
+    setDatePickerState({
+      mode,
+      start,
+      end,
+      tagName,
+    });
+  };
+
+  const applyDatePicker = (rawValue: string) => {
+    if (!datePickerState) {
       return;
     }
 
-    const normalized = normalizeDateValue(picked);
-    const { start, end } = getEditorSelectionView();
+    const normalized = normalizeDateValue(rawValue || formatDate(new Date()));
 
-    const prefix = tagName ? `@${tagName}(${normalized})` : normalized;
-    const spacer = start > 0 && !/\s/.test(viewText[start - 1] ?? '') ? ' ' : '';
+    if (datePickerState.mode === 'append') {
+      const append = replaceRange(viewText, datePickerState.start, datePickerState.end, `${normalized})`);
+      applyViewUpdate(append.nextText, append.nextCursor, append.nextCursor, true);
+      setStatusMessage(datePickerState.tagName ? `Inserted @${datePickerState.tagName} date.` : 'Inserted date.');
+      setDatePickerState(null);
+      return;
+    }
 
-    const next = replaceRange(viewText, start, end, `${spacer}${prefix}`);
+    const prefix = datePickerState.tagName ? `@${datePickerState.tagName}(${normalized})` : normalized;
+    const spacer = datePickerState.start > 0 && !/\s/.test(viewText[datePickerState.start - 1] ?? '') ? ' ' : '';
+    const next = replaceRange(viewText, datePickerState.start, datePickerState.end, `${spacer}${prefix}`);
     applyViewUpdate(next.nextText, next.nextCursor, next.nextCursor, true);
+    setStatusMessage(datePickerState.tagName ? `Inserted @${datePickerState.tagName} date.` : 'Inserted date.');
+    setDatePickerState(null);
+  };
 
-    setStatusMessage(tagName ? `Inserted @${tagName} date.` : 'Inserted date.');
+  const insertDateText = (tagName?: 'due' | 'start') => {
+    const { start, end } = getEditorSelectionView();
+    openDatePicker('insert', start, end, tagName);
   };
 
   const moveSelectionToProject = () => {
@@ -1600,18 +1640,9 @@ function App() {
 
       if (dueStarter || startStarter) {
         event.preventDefault();
-        const suggestion = formatDate(new Date());
-        const chosen = window.prompt('Insert date for this tag', suggestion);
-
-        if (!chosen) {
-          const fallback = replaceRange(viewText, start, end, '(');
-          applyViewUpdate(fallback.nextText, fallback.nextCursor, fallback.nextCursor, true);
-          return;
-        }
-
-        const normalized = normalizeDateValue(chosen);
-        const next = replaceRange(viewText, start, end, `(${normalized})`);
-        applyViewUpdate(next.nextText, next.nextCursor, next.nextCursor, true);
+        const fallback = replaceRange(viewText, start, end, '(');
+        applyViewUpdate(fallback.nextText, fallback.nextCursor, fallback.nextCursor, true);
+        openDatePicker('append', fallback.nextCursor, fallback.nextCursor, dueStarter ? 'due' : 'start');
         return;
       }
     }
@@ -1929,6 +1960,7 @@ function App() {
     setIsAuthenticated(false);
     setIsSyncReady(false);
     setIsSyncing(false);
+    setDatePickerState(null);
     setLoginUsername('');
     setLoginPassword('');
     setLoginError('');
@@ -2448,6 +2480,58 @@ function App() {
                   <li>Use the tab bar to switch documents; each tab has its own hierarchy context</li>
                 </ul>
               </section>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {datePickerState && (
+        <div className="date-picker-overlay" onClick={() => setDatePickerState(null)}>
+          <section className="date-picker-pop" onClick={(event) => event.stopPropagation()}>
+            <h3>Date</h3>
+            <p>{datePickerState.tagName ? <>Insert date for <code>@{datePickerState.tagName}</code></> : <>Insert date value</>}</p>
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={datePickerValue}
+              onChange={(event) => setDatePickerValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  applyDatePicker(datePickerValue);
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setDatePickerState(null);
+                }
+              }}
+            />
+            <div className="date-picker-actions">
+              <button type="button" onClick={() => setDatePickerValue(formatDate(new Date()))}>
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  setDatePickerValue(formatDate(tomorrow));
+                }}
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextWeek = new Date();
+                  nextWeek.setDate(nextWeek.getDate() + 7);
+                  setDatePickerValue(formatDate(nextWeek));
+                }}
+              >
+                +7d
+              </button>
+              <button type="button" className="date-picker-primary" onClick={() => applyDatePicker(datePickerValue)}>
+                Insert
+              </button>
             </div>
           </section>
         </div>

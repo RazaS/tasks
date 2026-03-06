@@ -477,6 +477,55 @@ kbd {
   font-size: 0.75rem;
 }
 
+.date-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  background: rgba(13, 22, 30, 0.36);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(16vh, 8rem);
+  padding-inline: 1rem;
+}
+
+.date-picker-pop {
+  width: min(360px, 100%);
+  border: 1px solid #b8c9b7;
+  border-radius: 14px;
+  background: #f9fcf8;
+  box-shadow: 0 22px 50px rgba(20, 39, 29, 0.24);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.date-picker-pop h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.date-picker-pop p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #35506a;
+}
+
+.date-picker-pop input[type='date'] {
+  width: 100%;
+}
+
+.date-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.date-picker-primary {
+  margin-left: auto;
+  font-weight: 700;
+}
+
 button,
 input,
 select {
@@ -580,6 +629,15 @@ button:focus {
   border-color: #4e6580;
 }
 
+.app-shell.dark .date-picker-pop {
+  background: #142231;
+  border-color: #3b5167;
+}
+
+.app-shell.dark .date-picker-pop p {
+  color: #bdd1e6;
+}
+
 .app-shell.dark button,
 .app-shell.dark input,
 .app-shell.dark select {
@@ -671,5 +729,9 @@ button:focus {
 
   .guide-modal {
     max-height: 92vh;
+  }
+
+  .date-picker-overlay {
+    padding-top: 1.2rem;
   }
 }
