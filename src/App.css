@@ -2,29 +2,31 @@
   height: 100vh;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(0, 42vh) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   background: radial-gradient(circle at 15% 12%, #f7efe5 0%, #ecf1e7 45%, #e2eee9 100%);
   color: #172633;
   overflow: hidden;
 }
 
 .app-shell.sidebar-collapsed {
-  grid-template-rows: 0 minmax(0, 1fr);
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .left-panel {
-  border-bottom: 1px solid #c4d2c4;
+  border-right: 1px solid #c4d2c4;
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
   overflow-y: auto;
+  min-width: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(244, 251, 243, 0.42) 100%);
 }
 
 .left-panel.collapsed {
-  height: 0;
+  width: 0;
+  min-width: 0;
   padding: 0;
   border: 0;
   overflow: hidden;
@@ -95,6 +97,7 @@
 }
 
 .editor-panel {
+  min-width: 0;
   min-height: 0;
   height: 100%;
   display: grid;
@@ -497,26 +500,41 @@ button:focus {
 
 @media (max-width: 1040px) {
   .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .app-shell.sidebar-collapsed {
-    grid-template-rows: 0 1fr;
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .left-panel {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 40vh) minmax(0, 1fr);
+  }
+
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+    grid-template-rows: 0 minmax(0, 1fr);
   }
 
   .left-panel {
     border-right: 0;
     border-bottom: 1px solid #c4d2c4;
-    max-height: 42vh;
+    max-height: 40vh;
   }
 
   .left-panel.collapsed {
-    display: none;
+    width: auto;
+    height: 0;
   }
-}
 
-@media (max-width: 760px) {
   .tabs-bar {
     flex-direction: column;
     align-items: stretch;
