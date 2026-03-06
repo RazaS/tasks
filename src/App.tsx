@@ -6,6 +6,7 @@ import {
   type ChangeEventHandler,
   type FormEventHandler,
   type KeyboardEventHandler,
+  type UIEventHandler,
 } from 'react';
 import './App.css';
 import type { MacroDef, TagValue, TaskItem } from './types';
@@ -261,6 +262,10 @@ function parseLine(rawLine: string): ParsedLine {
     tags: parsed.tags,
     isBlank: false,
   };
+}
+
+function hasDoneTagAtLineEnd(rawLine: string): boolean {
+  return /(?:^|\s)@done(?:\([^)]*\))?\s*$/.test(rawLine.trimEnd());
 }
 
 function formatLine(parts: ParsedLine): string {
@@ -678,6 +683,7 @@ function expandMacrosAtCursor(
 
 function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorRenderRef = useRef<HTMLPreElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const importReminderRef = useRef<HTMLInputElement>(null);
@@ -735,6 +741,21 @@ function App() {
   const viewStart = clampedFocus ? clampedFocus.start : 0;
   const viewEnd = clampedFocus ? clampedFocus.end : activeTab?.text.length ?? 0;
   const viewText = activeTab ? activeTab.text.slice(viewStart, viewEnd) : '';
+  const styledEditorLines = useMemo(() => {
+    const lines = viewText.split('\n');
+
+    return lines.map((line, index) => {
+      const doneAtEnd = hasDoneTagAtLineEnd(line);
+      const displayLine = line.length > 0 ? line : '\u200b';
+
+      return (
+        <span key={`line-${index}`} className={doneAtEnd ? 'editor-line is-done' : 'editor-line'}>
+          {displayLine}
+          {index < lines.length - 1 ? '\n' : ''}
+        </span>
+      );
+    });
+  }, [viewText]);
 
   const outline = useMemo(() => buildOutlineModel(viewText), [viewText]);
   const matchMap = useMemo(() => buildMatchMap(outline, filterQuery), [outline, filterQuery]);
@@ -988,6 +1009,16 @@ function App() {
       selectionStart: fullStart,
       selectionEnd: fullEnd,
     }));
+  };
+
+  const syncEditorRenderScroll: UIEventHandler<HTMLTextAreaElement> = (event) => {
+    const mirror = editorRenderRef.current;
+    if (!mirror) {
+      return;
+    }
+
+    mirror.scrollTop = event.currentTarget.scrollTop;
+    mirror.scrollLeft = event.currentTarget.scrollLeft;
   };
 
   const calculateEnterInsert = (text: string, start: number, end: number): { nextText: string; nextCursor: number } => {
@@ -1980,6 +2011,10 @@ function App() {
       return null;
     }
 
+    if (node.kind === 'task' && hasDoneTagAtLineEnd(outline.lines[node.lineIndex] ?? '')) {
+      return null;
+    }
+
     const collapsed = collapsedSet.has(nodeId);
     const tags = tagsToString(node.tags);
 
@@ -2354,16 +2389,22 @@ function App() {
         </section>
 
         <section className="editor-surface">
-          <textarea
-            ref={editorRef}
-            className="free-editor"
-            value={viewText}
-            spellCheck={false}
-            onChange={handleEditorChange}
-            onKeyDown={handleEditorKeyDown}
-            onSelect={captureSelection}
-            placeholder="Type free text here.\n\nProject 1:\n\t- First task\n\t- Second task"
-          />
+          <div className="editor-stack">
+            <pre ref={editorRenderRef} className="free-editor-render" aria-hidden="true">
+              {viewText.length > 0 ? styledEditorLines : <span className="editor-placeholder">Type free text here.</span>}
+            </pre>
+            <textarea
+              ref={editorRef}
+              className="free-editor"
+              value={viewText}
+              spellCheck={false}
+              onChange={handleEditorChange}
+              onKeyDown={handleEditorKeyDown}
+              onSelect={captureSelection}
+              onScroll={syncEditorRenderScroll}
+              placeholder="Type free text here.\n\nProject 1:\n\t- First task\n\t- Second task"
+            />
+          </div>
 
           <aside className="outline-surface">
             <div className="outline-head">Hierarchy (Current Screen)</div>
