@@ -87,6 +87,31 @@
   text-align: left;
 }
 
+.project-chip.static {
+  cursor: default;
+}
+
+.project-chip.static:hover {
+  background: #ffffff;
+}
+
+.project-chip.muted {
+  opacity: 0.68;
+}
+
+.project-group {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.project-group-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #587088;
+}
+
 .macro-row {
   display: flex;
   justify-content: space-between;
@@ -116,21 +141,38 @@
   backdrop-filter: blur(4px);
 }
 
-.tabs {
+.tabs-shell {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.tabs-scroller {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+  max-width: min(48vw, 44rem);
+}
+
+.tabs-scroller::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .tab-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
   border: 1px solid #b4c4b3;
   border-radius: 999px;
-  padding: 0.1rem;
+  padding: 0.28rem 0.7rem;
   background: #f5faf2;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .tab-chip.active {
@@ -138,20 +180,11 @@
   background: #e9efff;
 }
 
-.tab-chip button {
-  border: 0;
-  background: transparent;
-  padding: 0.2rem 0.5rem;
-}
-
-.close-tab {
-  color: #6d4f4f;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.new-tab {
-  border-style: dashed;
+.rail-button {
+  width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0;
+  flex: 0 0 auto;
 }
 
 .sidebar-toggle {
@@ -178,7 +211,8 @@
 .top-actions {
   display: flex;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .command-bar {
@@ -188,6 +222,16 @@
   border-bottom: 1px solid #d1dbd1;
   background: rgba(244, 250, 243, 0.82);
   flex-wrap: wrap;
+}
+
+.command-bar.compact {
+  justify-content: space-between;
+}
+
+.all-view-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #3c5a71;
 }
 
 .command-bar input {
@@ -236,8 +280,9 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: 0.82rem;
+  line-height: 1.33;
+  tab-size: 2;
   color: #1d2935;
   scrollbar-width: none;
 }
@@ -270,8 +315,10 @@
   resize: none;
   background: transparent;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: 0.82rem;
+  line-height: 1.33;
+  tab-size: 2;
+  letter-spacing: -0.01em;
   color: transparent;
   caret-color: #1d2935;
 }
@@ -288,6 +335,54 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.all-board {
+  display: grid;
+  gap: 0.8rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.all-category-card {
+  border: 1px solid #c5d5c3;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+  overflow: hidden;
+}
+
+.all-category-head {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid #d6e2d5;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.all-category-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.all-project-group h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.all-project-group ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.22rem;
+  font-size: 0.81rem;
+}
+
+.all-outline-section {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.7rem;
 }
 
 .outline-head {
@@ -485,6 +580,31 @@
   line-height: 1;
 }
 
+.manage-tabs-modal {
+  width: min(760px, 100%);
+}
+
+.manage-tabs-primary {
+  justify-self: start;
+  font-weight: 700;
+}
+
+.manage-tab-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(4, auto);
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.manage-tab-name {
+  text-align: left;
+}
+
+.manage-tab-name.active {
+  border-color: #4b73cb;
+  background: #e9efff;
+}
+
 .guide-content {
   display: grid;
   gap: 0.8rem;
@@ -673,6 +793,23 @@ button:focus {
   border-color: #34495d;
 }
 
+.app-shell.dark .project-group-title,
+.app-shell.dark .all-view-label,
+.app-shell.dark .all-category-head {
+  color: #a7c3df;
+}
+
+.app-shell.dark .all-category-card,
+.app-shell.dark .all-project-group,
+.app-shell.dark .manage-tab-name.active {
+  border-color: #3b5167;
+  background: #1a2a3b;
+}
+
+.app-shell.dark .all-category-head {
+  border-color: #34495d;
+}
+
 .app-shell.dark .guide-content {
   color: #d7e3f1;
 }
@@ -768,10 +905,15 @@ button:focus {
     align-items: stretch;
   }
 
-  .tabs,
+  .tabs-shell,
+  .tabs-scroller,
   .top-actions,
   .command-bar {
     width: 100%;
+  }
+
+  .tabs-scroller {
+    max-width: 100%;
   }
 
   .command-bar input,
@@ -791,6 +933,10 @@ button:focus {
 
   .guide-modal {
     max-height: 92vh;
+  }
+
+  .manage-tab-row {
+    grid-template-columns: 1fr 1fr;
   }
 
   .date-picker-overlay {

@@ -685,6 +685,7 @@ function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorRenderRef = useRef<HTMLPreElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const tabsScrollerRef = useRef<HTMLDivElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const importReminderRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -705,8 +706,11 @@ function App() {
   const [quickAction, setQuickAction] = useState<QuickAction>('new_task');
   const [statusMessage, setStatusMessage] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [showManageTabs, setShowManageTabs] = useState(false);
   const [datePickerState, setDatePickerState] = useState<DatePickerState | null>(null);
   const [datePickerValue, setDatePickerValue] = useState(() => formatDate(new Date()));
+  const [activeCategoryId, setActiveCategoryId] = useState<string>(() => tabs[0]?.id ?? 'all');
+  const [importTargetTabId, setImportTargetTabId] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string>(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ?? '');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)));
   const [isSyncReady, setIsSyncReady] = useState(false);
@@ -717,6 +721,7 @@ function App() {
 
   const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0]?.id ?? '';
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === resolvedActiveTabId) ?? null, [tabs, resolvedActiveTabId]);
+  const activeCategoryIsAll = activeCategoryId === 'all';
 
   const activeFocus = activeTab ? focusByTab[activeTab.id] ?? null : null;
   const clampedFocus = useMemo(() => {
@@ -758,7 +763,58 @@ function App() {
   }, [viewText]);
 
   const outline = useMemo(() => buildOutlineModel(viewText), [viewText]);
+  const fullOutline = useMemo(() => buildOutlineModel(activeTab?.text ?? ''), [activeTab]);
   const matchMap = useMemo(() => buildMatchMap(outline, filterQuery), [outline, filterQuery]);
+  const fullProjectIds = useMemo(() => fullOutline.projectIds, [fullOutline]);
+  const allCategorySections = useMemo(
+    () =>
+      tabs.map((tab) => {
+        const tabOutline = buildOutlineModel(tab.text);
+        const projectLookup = new Map(
+          tabOutline.projectIds.map((projectId) => {
+            const projectNode = tabOutline.nodes[projectId];
+            return [projectId, projectNode?.title || '(untitled)'];
+          }),
+        );
+
+        const groups = new Map<string, string[]>();
+
+        Object.values(tabOutline.nodes).forEach((node) => {
+          if (node.kind !== 'task') {
+            return;
+          }
+
+          if (hasDoneTagAtLineEnd(tabOutline.lines[node.lineIndex] ?? '')) {
+            return;
+          }
+
+          let projectTitle = 'Ungrouped';
+          let cursor = node.parentId;
+          while (cursor) {
+            const parent = tabOutline.nodes[cursor];
+            if (parent?.kind === 'project') {
+              projectTitle = projectLookup.get(cursor) ?? parent.title ?? 'Ungrouped';
+              break;
+            }
+            cursor = parent?.parentId ?? null;
+          }
+
+          const existing = groups.get(projectTitle) ?? [];
+          existing.push(node.title || '(blank)');
+          groups.set(projectTitle, existing);
+        });
+
+        return {
+          tabId: tab.id,
+          tabName: tab.name,
+          groups: Array.from(groups.entries()).map(([projectTitle, taskTitles]) => ({
+            projectTitle,
+            taskTitles,
+          })),
+        };
+      }),
+    [tabs],
+  );
 
   const collapsedSet = useMemo(() => {
     if (!activeTab) {
@@ -863,6 +919,16 @@ function App() {
       window.clearTimeout(timeoutId);
     };
   }, [tabs, activeTab, macros, savedSearches, sectionVisibility, sidebarCollapsed, darkMode, isAuthenticated, authToken, isSyncReady]);
+
+  useEffect(() => {
+    if (activeCategoryId === 'all') {
+      return;
+    }
+
+    if (!tabs.some((tab) => tab.id === activeCategoryId)) {
+      setActiveCategoryId(tabs[0]?.id ?? 'all');
+    }
+  }, [tabs, activeCategoryId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1711,6 +1777,7 @@ function App() {
 
     setTabs((previous) => [...previous, tab]);
     setActiveTabId(tab.id);
+    setActiveCategoryId(tab.id);
     pendingSelectionRef.current = {
       start: 0,
       end: 0,
@@ -1722,6 +1789,7 @@ function App() {
 
   const switchTab = (tabId: string) => {
     if (!activeTab || tabId === activeTab.id) {
+      setActiveCategoryId(tabId);
       return;
     }
 
@@ -1749,23 +1817,22 @@ function App() {
     };
 
     setActiveTabId(tabId);
+    setActiveCategoryId(tabId);
     setFilterQuery('');
   };
 
-  const renameActiveTab = () => {
-    if (!activeTab) {
+  const renameTab = (tabId: string) => {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (!target) {
       return;
     }
 
-    const next = window.prompt('Rename tab', activeTab.name)?.trim();
+    const next = window.prompt('Rename tab', target.name)?.trim();
     if (!next) {
       return;
     }
 
-    updateActiveTab((tab) => ({
-      ...tab,
-      name: next,
-    }));
+    setTabs((previous) => previous.map((tab) => (tab.id === tabId ? { ...tab, name: next } : tab)));
   };
 
   const closeTab = (id: string) => {
@@ -1784,6 +1851,7 @@ function App() {
 
     if (resolvedActiveTabId === id && fallback) {
       setActiveTabId(fallback.id);
+      setActiveCategoryId(fallback.id);
       pendingSelectionRef.current = {
         start: fallback.selectionStart,
         end: fallback.selectionEnd,
@@ -1792,13 +1860,14 @@ function App() {
     }
   };
 
-  const exportActiveTab = () => {
-    if (!activeTab) {
+  const exportTab = (tabId: string) => {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (!target) {
       return;
     }
 
-    const safeName = activeTab.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const blob = new Blob([activeTab.text], { type: 'text/plain;charset=utf-8' });
+    const safeName = target.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const blob = new Blob([target.text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
 
@@ -1807,11 +1876,12 @@ function App() {
     anchor.click();
 
     URL.revokeObjectURL(url);
-    setStatusMessage(`Exported ${activeTab.name}.`);
+    setStatusMessage(`Exported ${target.name}.`);
   };
 
-  const importToActiveTab = async (file: File) => {
-    if (!activeTab) {
+  const importToTab = async (tabId: string, file: File) => {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (!target) {
       return;
     }
 
@@ -1823,12 +1893,20 @@ function App() {
       focus: true,
     };
 
-    updateActiveTab((tab) => ({
-      ...tab,
-      text,
-      selectionStart: text.length,
-      selectionEnd: text.length,
-    }));
+    setTabs((previous) =>
+      previous.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              text,
+              selectionStart: text.length,
+              selectionEnd: text.length,
+            }
+          : tab,
+      ),
+    );
+    setActiveTabId(tabId);
+    setActiveCategoryId(tabId);
 
     setStatusMessage(`Imported ${file.name}.`);
   };
@@ -1915,19 +1993,19 @@ function App() {
     });
   };
 
-  const focusProjectNode = (nodeId: string) => {
-    if (!activeTab) {
+  const focusProjectNode = (nodeId: string, sourceOutline = outline) => {
+    if (!activeTab || activeCategoryIsAll) {
       return;
     }
 
-    const node = outline.nodes[nodeId];
+    const node = sourceOutline.nodes[nodeId];
     if (!node || node.kind !== 'project') {
       return;
     }
 
     const nextFocus: FocusRange = {
-      start: viewStart + node.startOffset,
-      end: viewStart + node.subtreeEndOffset,
+      start: sourceOutline === outline ? viewStart + node.startOffset : node.startOffset,
+      end: sourceOutline === outline ? viewStart + node.subtreeEndOffset : node.subtreeEndOffset,
       label: node.title || 'project',
     };
 
@@ -1943,6 +2021,13 @@ function App() {
     };
 
     setStatusMessage(`Focused project: ${nextFocus.label}`);
+  };
+
+  const scrollCategoryRail = (direction: 'left' | 'right') => {
+    tabsScrollerRef.current?.scrollBy({
+      left: direction === 'left' ? -220 : 220,
+      behavior: 'smooth',
+    });
   };
 
   const clearFocus = () => {
@@ -1998,8 +2083,6 @@ function App() {
     setFilterQuery('');
     setStatusMessage('Logged out.');
   };
-
-  const visibleProjectIds = outline.projectIds.filter((id) => matchMap[id]);
 
   const renderTree = (nodeId: string, depth = 0) => {
     if (!matchMap[nodeId]) {
@@ -2137,21 +2220,43 @@ function App() {
 
           {sectionVisibility.projects && (
             <div className="section-content">
-              <button type="button" onClick={clearFocus}>
-                Home
-              </button>
-              {visibleProjectIds.map((projectId) => {
-                const project = outline.nodes[projectId];
-                if (!project) {
-                  return null;
-                }
+              {!activeCategoryIsAll && (
+                <button type="button" onClick={clearFocus}>
+                  Home
+                </button>
+              )}
+              {activeCategoryIsAll
+                ? allCategorySections.map((section) => (
+                    <div key={section.tabId} className="project-group">
+                      <div className="project-group-title">{section.tabName}</div>
+                      {section.groups.length > 0 ? (
+                        section.groups.map((group) => (
+                          <div key={`${section.tabId}-${group.projectTitle}`} className="project-chip static">
+                            {group.projectTitle}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="project-chip static muted">No open tasks</div>
+                      )}
+                    </div>
+                  ))
+                : fullProjectIds.map((projectId) => {
+                    const project = fullOutline.nodes[projectId];
+                    if (!project) {
+                      return null;
+                    }
 
-                return (
-                  <button key={projectId} type="button" className="project-chip" onClick={() => focusProjectNode(projectId)}>
-                    {project.title || '(untitled)'}
-                  </button>
-                );
-              })}
+                    return (
+                      <button
+                        key={projectId}
+                        type="button"
+                        className="project-chip"
+                        onClick={() => focusProjectNode(projectId, fullOutline)}
+                      >
+                        {project.title || '(untitled)'}
+                      </button>
+                    );
+                  })}
             </div>
           )}
         </section>
@@ -2254,24 +2359,34 @@ function App() {
 
       <main className="editor-panel">
         <header className="tabs-bar">
-          <div className="tabs">
+          <div className="tabs-shell">
             <button type="button" className="sidebar-toggle" onClick={() => setSidebarCollapsed((previous) => !previous)}>
               {sidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
             </button>
-            {tabs.map((tab) => (
-              <div key={tab.id} className={`tab-chip ${tab.id === activeTab.id ? 'active' : ''}`}>
-                <button type="button" onClick={() => switchTab(tab.id)}>
+            <button type="button" className="rail-button" onClick={() => scrollCategoryRail('left')} aria-label="Scroll categories left">
+              &#8249;
+            </button>
+            <div ref={tabsScrollerRef} className="tabs-scroller">
+              <button
+                type="button"
+                className={`tab-chip ${activeCategoryIsAll ? 'active' : ''}`}
+                onClick={() => setActiveCategoryId('all')}
+              >
+                All
+              </button>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`tab-chip ${tab.id === activeCategoryId ? 'active' : ''}`}
+                  onClick={() => switchTab(tab.id)}
+                >
                   {tab.name}
                 </button>
-                {tabs.length > 1 && (
-                  <button type="button" className="close-tab" onClick={() => closeTab(tab.id)}>
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-            <button type="button" className="new-tab" onClick={createNewTab}>
-              + Tab
+              ))}
+            </div>
+            <button type="button" className="rail-button" onClick={() => scrollCategoryRail('right')} aria-label="Scroll categories right">
+              &#8250;
             </button>
           </div>
 
@@ -2279,8 +2394,16 @@ function App() {
             <button type="button" onClick={() => setShowGuide(true)}>
               Guide
             </button>
-            <button type="button" onClick={handleLogout}>
-              Logout
+            <button type="button" onClick={() => setShowManageTabs(true)}>
+              Manage Tabs
+            </button>
+            <button type="button" className="icon-toggle" onClick={handleLogout} aria-label="Logout">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M10 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4v-2H6V5h4V3Zm5.3 4.3-1.4 1.4 1.3 1.3H9v2h6.2l-1.3 1.3 1.4 1.4L19 11l-3.7-3.7Z"
+                />
+              </svg>
             </button>
             <button
               type="button"
@@ -2304,18 +2427,6 @@ function App() {
                 </svg>
               )}
             </button>
-            <button type="button" onClick={renameActiveTab}>
-              Rename Tab
-            </button>
-            <button type="button" onClick={exportActiveTab}>
-              Export
-            </button>
-            <button type="button" onClick={() => importFileRef.current?.click()}>
-              Import
-            </button>
-            <button type="button" onClick={() => importReminderRef.current?.click()}>
-              Import Reminders
-            </button>
             <input
               ref={importFileRef}
               type="file"
@@ -2324,8 +2435,9 @@ function App() {
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  void importToActiveTab(file);
+                  void importToTab(importTargetTabId ?? activeTab.id, file);
                 }
+                setImportTargetTabId(null);
                 event.currentTarget.value = '';
               }}
             />
@@ -2345,75 +2457,130 @@ function App() {
           </div>
         </header>
 
-        <section className="command-bar">
-          <input
-            ref={searchInputRef}
-            value={filterQuery}
-            onChange={(event) => setFilterQuery(event.target.value)}
-            placeholder="Filter tree: @tag, not @done, @done and @today"
-          />
-          <button type="button" onClick={() => setFilterQuery('')}>
-            Clear Filter
-          </button>
+        {activeCategoryIsAll ? (
+          <>
+            <section className="command-bar compact">
+              <span className="all-view-label">All categories view is read only.</span>
+            </section>
+            <section className="editor-surface">
+              <section className="all-board">
+                {allCategorySections.map((section) => (
+                  <article key={section.tabId} className="all-category-card">
+                    <header className="all-category-head">{section.tabName}</header>
+                    <div className="all-category-body">
+                      {section.groups.length > 0 ? (
+                        section.groups.map((group) => (
+                          <section key={`${section.tabId}-${group.projectTitle}`} className="all-project-group">
+                            <h3>{group.projectTitle}</h3>
+                            <ul>
+                              {group.taskTitles.map((taskTitle, index) => (
+                                <li key={`${section.tabId}-${group.projectTitle}-${index}`}>{taskTitle}</li>
+                              ))}
+                            </ul>
+                          </section>
+                        ))
+                      ) : (
+                        <p className="empty-tree">No open tasks in this category.</p>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </section>
 
-          <select value={quickAction} onChange={(event) => setQuickAction(event.target.value as QuickAction)}>
-            <option value="new_project">Item &gt; New Project</option>
-            <option value="new_task">Item &gt; New Task</option>
-            <option value="new_note">Item &gt; New Note</option>
-            <option value="group_items">Item &gt; Group Items</option>
-            <option value="duplicate_items">Item &gt; Duplicate Items</option>
-            <option value="format_project">Item &gt; Format as Project</option>
-            <option value="format_task">Item &gt; Format as Task</option>
-            <option value="format_note">Item &gt; Format as Note</option>
-            <option value="move_up">Item &gt; Move Up</option>
-            <option value="move_down">Item &gt; Move Down</option>
-            <option value="move_to_project">Item &gt; Move to Project...</option>
-            <option value="delete_items">Item &gt; Delete Items</option>
-            <option value="tag_with">Item &gt; Tag With...</option>
-            <option value="toggle_done">Tag &gt; Toggle @done</option>
-            <option value="archive_done">Tag &gt; Archive @done Items</option>
-            <option value="insert_date">Edit &gt; Insert Date</option>
-            <option value="tag_due">Tag &gt; Due</option>
-            <option value="tag_start">Tag &gt; Start</option>
-            <option value="export_reminders">Item &gt; Export to Reminders JSON</option>
-          </select>
-          <button type="button" onClick={runQuickAction}>
-            Run
-          </button>
+              <aside className="outline-surface">
+                <div className="outline-head">All Projects</div>
+                <div className="outline-list">
+                  {allCategorySections.map((section) => (
+                    <div key={`outline-${section.tabId}`} className="all-outline-section">
+                      <div className="project-group-title">{section.tabName}</div>
+                      {section.groups.length > 0 ? (
+                        section.groups.map((group) => (
+                          <div key={`outline-${section.tabId}-${group.projectTitle}`} className="project-chip static">
+                            {group.projectTitle}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="project-chip static muted">No open tasks</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="command-bar">
+              <input
+                ref={searchInputRef}
+                value={filterQuery}
+                onChange={(event) => setFilterQuery(event.target.value)}
+                placeholder="Filter tree: @tag, not @done, @done and @today"
+              />
+              <button type="button" onClick={() => setFilterQuery('')}>
+                Clear Filter
+              </button>
 
-          {clampedFocus && (
-            <button type="button" onClick={clearFocus}>
-              Unfocus ({clampedFocus.label})
-            </button>
-          )}
-        </section>
+              <select value={quickAction} onChange={(event) => setQuickAction(event.target.value as QuickAction)}>
+                <option value="new_project">Item &gt; New Project</option>
+                <option value="new_task">Item &gt; New Task</option>
+                <option value="new_note">Item &gt; New Note</option>
+                <option value="group_items">Item &gt; Group Items</option>
+                <option value="duplicate_items">Item &gt; Duplicate Items</option>
+                <option value="format_project">Item &gt; Format as Project</option>
+                <option value="format_task">Item &gt; Format as Task</option>
+                <option value="format_note">Item &gt; Format as Note</option>
+                <option value="move_up">Item &gt; Move Up</option>
+                <option value="move_down">Item &gt; Move Down</option>
+                <option value="move_to_project">Item &gt; Move to Project...</option>
+                <option value="delete_items">Item &gt; Delete Items</option>
+                <option value="tag_with">Item &gt; Tag With...</option>
+                <option value="toggle_done">Tag &gt; Toggle @done</option>
+                <option value="archive_done">Tag &gt; Archive @done Items</option>
+                <option value="insert_date">Edit &gt; Insert Date</option>
+                <option value="tag_due">Tag &gt; Due</option>
+                <option value="tag_start">Tag &gt; Start</option>
+                <option value="export_reminders">Item &gt; Export to Reminders JSON</option>
+              </select>
+              <button type="button" onClick={runQuickAction}>
+                Run
+              </button>
 
-        <section className="editor-surface">
-          <div className="editor-stack">
-            <pre ref={editorRenderRef} className="free-editor-render" aria-hidden="true">
-              {viewText.length > 0 ? styledEditorLines : <span className="editor-placeholder">Type free text here.</span>}
-            </pre>
-            <textarea
-              ref={editorRef}
-              className="free-editor"
-              value={viewText}
-              spellCheck={false}
-              onChange={handleEditorChange}
-              onKeyDown={handleEditorKeyDown}
-              onSelect={captureSelection}
-              onScroll={syncEditorRenderScroll}
-              placeholder="Type free text here.\n\nProject 1:\n\t- First task\n\t- Second task"
-            />
-          </div>
+              {clampedFocus && (
+                <button type="button" onClick={clearFocus}>
+                  Unfocus ({clampedFocus.label})
+                </button>
+              )}
+            </section>
 
-          <aside className="outline-surface">
-            <div className="outline-head">Hierarchy (Current Screen)</div>
-            <div className="outline-list">
-              {outline.rootIds.length === 0 && <p className="empty-tree">Start typing to build hierarchy.</p>}
-              {outline.rootIds.map((rootId) => renderTree(rootId))}
-            </div>
-          </aside>
-        </section>
+            <section className="editor-surface">
+              <div className="editor-stack">
+                <pre ref={editorRenderRef} className="free-editor-render" aria-hidden="true">
+                  {viewText.length > 0 ? styledEditorLines : <span className="editor-placeholder">Type free text here.</span>}
+                </pre>
+                <textarea
+                  ref={editorRef}
+                  className="free-editor"
+                  value={viewText}
+                  spellCheck={false}
+                  onChange={handleEditorChange}
+                  onKeyDown={handleEditorKeyDown}
+                  onSelect={captureSelection}
+                  onScroll={syncEditorRenderScroll}
+                  placeholder="Type free text here.\n\nProject 1:\n\t- First task\n\t- Second task"
+                />
+              </div>
+
+              <aside className="outline-surface">
+                <div className="outline-head">Hierarchy (Current Category)</div>
+                <div className="outline-list">
+                  {outline.rootIds.length === 0 && <p className="empty-tree">Start typing to build hierarchy.</p>}
+                  {outline.rootIds.map((rootId) => renderTree(rootId))}
+                </div>
+              </aside>
+            </section>
+          </>
+        )}
 
         <footer className="editor-footer">
           <span>Enter: auto item formatting</span>
@@ -2521,6 +2688,68 @@ function App() {
                   <li>Use the tab bar to switch documents; each tab has its own hierarchy context</li>
                 </ul>
               </section>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showManageTabs && (
+        <div className="guide-overlay" role="dialog" aria-modal="true" aria-labelledby="manage-tabs-title" onClick={() => setShowManageTabs(false)}>
+          <section className="guide-modal manage-tabs-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="guide-head">
+              <h2 id="manage-tabs-title">Manage Tabs</h2>
+              <button type="button" className="guide-close" onClick={() => setShowManageTabs(false)} aria-label="Close manage tabs">
+                ×
+              </button>
+            </div>
+            <div className="guide-content">
+              <button type="button" className="manage-tabs-primary" onClick={createNewTab}>
+                New Category
+              </button>
+              {tabs.map((tab) => (
+                <div key={`manage-${tab.id}`} className="manage-tab-row">
+                  <button
+                    type="button"
+                    className={`manage-tab-name ${tab.id === activeTabId ? 'active' : ''}`}
+                    onClick={() => {
+                      switchTab(tab.id);
+                      setShowManageTabs(false);
+                    }}
+                  >
+                    {tab.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      renameTab(tab.id);
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportTab(tab.id);
+                    }}
+                  >
+                    Export
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportTargetTabId(tab.id);
+                      importFileRef.current?.click();
+                    }}
+                  >
+                    Import
+                  </button>
+                  {tabs.length > 1 && (
+                    <button type="button" onClick={() => closeTab(tab.id)}>
+                      Close
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
         </div>
